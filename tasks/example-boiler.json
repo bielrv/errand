@@ -1,0 +1,61 @@
+{
+  "title": "boiler repair at Flat 3",
+  "objective": "The boiler at the tenanted flat has produced no hot water or heating since Monday morning. Report the fault, get an engineer booked, and get a reference number. The tenant, Marta Silva, is at the property and can give access; her mobile is on file as the site contact. If they offer a repair appointment, take the earliest one that is a weekday morning. If they say the account is not eligible for a free repair, find out exactly what it would cost and who would have to authorise it, but do not agree to anything.",
+  "language": "en-GB",
+  "callee": {
+    "name": "British Gas - homecare repairs",
+    "phone": "+443332005100",
+    "ivrHints": "Existing customer, then report a fault or breakdown. Say 'no heating or hot water' if asked to describe the problem.",
+    "timezone": "Europe/London",
+    "businessHours": { "open": 8, "close": 18, "days": [1, 2, 3, 4, 5] }
+  },
+  "facts": [
+    {
+      "key": "property_address",
+      "label": "Property address",
+      "value": "Flat 3, 12 Elm Road, London SW4 7TG",
+      "disclosure": "proactive"
+    },
+    {
+      "key": "fault",
+      "label": "The fault",
+      "value": "No hot water and no heating since Monday morning. The boiler display shows error code F28. It has been reset twice with no change.",
+      "disclosure": "proactive"
+    },
+    {
+      "key": "site_contact",
+      "label": "Person at the property",
+      "value": "Marta Silva, the tenant, available weekdays before 2pm",
+      "disclosure": "proactive"
+    },
+    {
+      "key": "account_number",
+      "label": "Account number",
+      "value": "8829301744",
+      "disclosure": "on_request"
+    },
+    {
+      "key": "account_holder_dob",
+      "label": "Account holder date of birth",
+      "value": "14 March 1981",
+      "disclosure": "on_request"
+    },
+    {
+      "key": "billing_postcode",
+      "label": "Billing postcode",
+      "value": "SW4 7TG",
+      "disclosure": "on_request"
+    }
+  ],
+  "constraints": [
+    "Weekday mornings only for the appointment. Never accept an afternoon or weekend slot.",
+    "Do not agree to any change of tariff, plan or direct debit.",
+    "Do not give the tenant's phone number unless they need it to arrange access, and say it is the tenant's, not the account holder's."
+  ],
+  "success": [
+    "An engineer visit is booked for a weekday morning.",
+    "A job or reference number has been captured.",
+    "The date and time window of the visit have been captured."
+  ],
+  "maxAttempts": 5
+}
