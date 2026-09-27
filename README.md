@@ -20,9 +20,9 @@ verbs no matter what it is calling about.
                        orchestrator ────────┤  respects opening hours,
                                             │  retries with backoff
                                             ▼
-                                     Vapi  ──▶  Twilio number  ──▶  the company
+                                  voice stack  ──▶  phone number  ──▶  the company
                                        │
-                          tool calls   │   end-of-call report
+                          tool calls   │   transcript, outcome
                                        ▼
                             your server ──SMS──▶  you
 ```
@@ -33,7 +33,49 @@ verbs no matter what it is calling about.
   `record`, `ask_principal`, `request_approval`, `schedule_callback`, `finish`.
 - **`src/orchestrator.ts`** turns a call into a task that finishes - a dropped
   call or an unhelpful agent means a retry, not a failure.
-- **`src/providers/vapi.ts`** is the only file that knows about Vapi.
+- **`src/providers/`** is the only part that knows which voice stack is in use.
+
+## Two voice stacks
+
+Set `VOICE_STACK` to pick one. Both derive their prompt from
+`buildSystemPrompt` and their tools from `toolSpecs`, so the agent behaves the
+same either way; only the transport differs. The smoke test asserts that.
+
+|  | `vapi` | `livekit` |
+|---|---|---|
+| Who owns the media path | Vapi | you |
+| Tools reach the handlers | over HTTP webhooks | direct function calls |
+| Processes to run | `npm start` | `npm start` **and** `npm run worker` |
+| Opening line | scripted first utterance | instructed, so it cannot talk over the IVR |
+| Turn-taking | Vapi's knobs | Silero VAD + dynamic endpointing, yours to tune |
+| Per-minute platform fee | yes | no (LiveKit media minutes instead) |
+| Provider keys needed | Vapi's | Anthropic, Deepgram, ElevenLabs directly |
+
+`vapi` is the default and the recommended starting point. The `livekit` path
+exists so the choice stays live and you can A/B the two on identical tasks.
+
+### Running the livekit stack
+
+Create a Twilio elastic SIP trunk, register it with LiveKit as an **outbound**
+trunk, and put the resulting `ST_...` id in `LIVEKIT_SIP_TRUNK_ID`. Then:
+
+```bash
+npm start            # HTTP server, orchestrator, SMS
+npm run worker -- dev    # the agent worker, in another terminal
+```
+
+The orchestrator creates a room, dispatches the worker into it, then dials the
+callee in over SIP - in that order, so the agent is already listening when the
+IVR starts talking.
+
+### On the hold-time cost argument
+
+Owning the pipeline is what would eventually let you stop paying for STT and
+the model during a 30 minute hold. That optimisation is **not** in here: doing
+it properly means gating the pipeline on framework internals. What this stack
+does give you is the measurement - `maxCallDuration` caps each call's cost, and
+per-call model, STT and TTS usage lands in the `calls.metrics` column. Look at
+real numbers from real calls before engineering against them.
 
 ## Design decisions worth knowing
 
@@ -59,10 +101,14 @@ call-back rather than guessing.
 
 - **Twilio** - buy a UK or Spanish number. You need the account SID, auth token,
   and a number for outbound SMS (it can be the same one).
-- **Vapi** - import that Twilio number under Phone Numbers. Copy the phone
-  number **id** (not the number itself) into `VAPI_PHONE_NUMBER_ID`.
-- **Anthropic** - an API key for the CLI's brief composer. `ANTHROPIC_API_KEY`,
-  or run `ant auth login`.
+- **Vapi** (`VOICE_STACK=vapi`) - import that Twilio number under Phone
+  Numbers. Copy the phone number **id** (not the number itself) into
+  `VAPI_PHONE_NUMBER_ID`.
+- **LiveKit** (`VOICE_STACK=livekit`) - a Cloud project or your own server, plus
+  an outbound SIP trunk pointing at Twilio. Also needs Deepgram and ElevenLabs
+  keys, since this stack calls them directly.
+- **Anthropic** - an API key, for the CLI's brief composer and (on the livekit
+  stack) for the agent itself. `ANTHROPIC_API_KEY`, or run `ant auth login`.
 
 ### 2. Config
 
@@ -102,7 +148,7 @@ npm run task -- --file tasks/example-boiler.json   # skip the composer
 npm run task -- --list
 npm run task -- --show <id>
 npm run prompt -- tasks/example-boiler.json        # see the exact prompt
-npm run smoke                                      # 26 checks, no phone call
+npm run smoke                                      # 36 checks, no phone call
 ```
 
 ## Before it will actually work
@@ -119,15 +165,18 @@ tenant's emergency.
 
 ## Cost
 
-Roughly EUR 0.10-0.20 per minute all in (Vapi platform, Twilio minutes, the
-model, the voice). A 30 minute hold-and-resolve call costs about EUR 5 and none
-of your time. The Twilio number is a few euros a month.
+Roughly EUR 0.10-0.20 per minute all in - platform, telephony minutes, the
+model, the voice. A 30 minute hold-and-resolve call costs about EUR 5 and none
+of your time. The Twilio number is a few euros a month. The `livekit` stack drops
+the platform markup and adds the engineering back; `calls.metrics` is there so
+you can compare the two on real calls rather than on arithmetic.
 
 ## Deploying
 
-It is a single Node process plus a SQLite file. Fly.io, Railway or a EUR 5 VPS
-all work. It needs to stay up: call-backs and SMS replies arrive at their own
-pace, not yours.
+One Node process plus a SQLite file on the `vapi` stack, two processes on
+`livekit` (server and worker, sharing the database). Fly.io, Railway or a EUR 5
+VPS all work. It needs to stay up: call-backs and SMS replies arrive at their
+own pace, not yours.
 
 ## Limits
 
@@ -137,3 +186,5 @@ pace, not yours.
 - Business hours are a simple open/close/weekday window per callee. No bank
   holidays.
 - One call at a time per task. Nothing stops several tasks running at once.
+- The `livekit` stack has no hold-time cost optimisation yet; see the note
+  above. It also has no recording, where Vapi gives you one for free.

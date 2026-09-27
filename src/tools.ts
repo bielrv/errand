@@ -9,9 +9,17 @@ import type { Task } from './types.js'
  * verbs are how any task gets worked.
  */
 
+/** Provider-neutral: name, description, JSON Schema. Both stacks derive from this. */
+export type ToolSpec = {
+  name: string
+  description: string
+  parameters: Record<string, unknown>
+}
+
+/** Vapi's wire format: the same spec plus the webhook it should call. */
 type ToolDef = {
   type: 'function'
-  function: { name: string; description: string; parameters: Record<string, unknown> }
+  function: ToolSpec
   server: { url: string }
 }
 
@@ -21,12 +29,11 @@ const obj = (props: Record<string, unknown>, required: string[]) => ({
   required,
 })
 
-export function toolDefinitions(taskId: string): ToolDef[] {
-  const url = `${config.publicUrl}/webhooks/vapi/tool/${taskId}?secret=${config.webhookSecret}`
-  const t = (name: string, description: string, parameters: Record<string, unknown>): ToolDef => ({
-    type: 'function',
-    function: { name, description, parameters },
-    server: { url },
+export function toolSpecs(): ToolSpec[] {
+  const t = (name: string, description: string, parameters: Record<string, unknown>): ToolSpec => ({
+    name,
+    description,
+    parameters,
   })
 
   return [
@@ -98,6 +105,12 @@ export function toolDefinitions(taskId: string): ToolDef[] {
       ),
     ),
   ]
+}
+
+/** Vapi reaches the handlers over HTTP, so each tool carries the webhook URL. */
+export function toolDefinitions(taskId: string): ToolDef[] {
+  const url = `${config.publicUrl}/webhooks/vapi/tool/${taskId}?secret=${config.webhookSecret}`
+  return toolSpecs().map((spec) => ({ type: 'function', function: spec, server: { url } }))
 }
 
 /* ------------------------------------------------------------- handlers -- */

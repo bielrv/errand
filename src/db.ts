@@ -56,6 +56,14 @@ CREATE TABLE IF NOT EXISTS disclosures (
 );
 `)
 
+/**
+ * Per-call model/STT/TTS usage, so you can see whether hold time is actually
+ * where the money goes before optimising for it. Added after the first
+ * release, hence the guarded ALTER.
+ */
+const columns = (db.prepare('PRAGMA table_info(calls)').all() as Row[]).map((c) => c.name as string)
+if (!columns.includes('metrics')) db.exec('ALTER TABLE calls ADD COLUMN metrics TEXT')
+
 const now = () => new Date().toISOString()
 type Row = Record<string, unknown>
 
@@ -136,6 +144,7 @@ const toCall = (r: Row): CallAttempt => ({
   recordingUrl: r.recording_url as string | null,
   costUsd: r.cost_usd as number | null,
   outcome: r.outcome as string | null,
+  metrics: r.metrics ? (JSON.parse(r.metrics as string) as Record<string, unknown>) : null,
 })
 
 export function startCall(taskId: string, providerCallId: string | null): CallAttempt {
@@ -150,6 +159,7 @@ export function startCall(taskId: string, providerCallId: string | null): CallAt
     recordingUrl: null,
     costUsd: null,
     outcome: null,
+    metrics: null,
   }
   db.prepare('INSERT INTO calls (id, task_id, provider_call_id, started_at) VALUES (?, ?, ?, ?)').run(
     call.id,
@@ -167,10 +177,13 @@ export function findCallByProviderId(providerCallId: string): CallAttempt | null
 
 export function finishCall(
   providerCallId: string,
-  patch: Partial<Pick<CallAttempt, 'endedReason' | 'transcript' | 'recordingUrl' | 'costUsd' | 'outcome'>>,
+  patch: Partial<
+    Pick<CallAttempt, 'endedReason' | 'transcript' | 'recordingUrl' | 'costUsd' | 'outcome' | 'metrics'>
+  >,
 ): void {
   db.prepare(
-    `UPDATE calls SET ended_at = ?, ended_reason = ?, transcript = ?, recording_url = ?, cost_usd = ?, outcome = ?
+    `UPDATE calls SET ended_at = ?, ended_reason = ?, transcript = ?, recording_url = ?, cost_usd = ?,
+                      outcome = ?, metrics = ?
       WHERE provider_call_id = ?`,
   ).run(
     now(),
@@ -179,6 +192,7 @@ export function finishCall(
     patch.recordingUrl ?? null,
     patch.costUsd ?? null,
     patch.outcome ?? null,
+    patch.metrics ? JSON.stringify(patch.metrics) : null,
     providerCallId,
   )
 }

@@ -82,6 +82,8 @@ export type CallAttempt = {
   recordingUrl: string | null
   costUsd: number | null
   outcome: string | null
+  /** Model, STT and TTS usage for this call. Shape varies by stack. */
+  metrics: Record<string, unknown> | null
 }
 
 /** A question or approval the agent pushed to the principal mid-call. */

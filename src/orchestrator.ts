@@ -1,7 +1,7 @@
 import { config } from './config.js'
 import * as store from './db.js'
 import { notifyOutcome, notify } from './notify.js'
-import { placeCall } from './providers/vapi.js'
+import { provider } from './providers/index.js'
 import type { Task } from './types.js'
 
 /**
@@ -78,9 +78,10 @@ export async function attemptTask(task: Task): Promise<void> {
   store.saveTask(task)
 
   try {
-    const { providerCallId } = await placeCall(task)
+    const stack = await provider()
+    const { providerCallId } = await stack.placeCall(task)
     store.startCall(task.id, providerCallId)
-    console.log(`[call] task=${task.id} attempt=${task.attempts} call=${providerCallId}`)
+    console.log(`[call:${stack.name}] task=${task.id} attempt=${task.attempts} call=${providerCallId}`)
   } catch (err) {
     console.error('[call] failed to place', err)
     task.status = 'queued'

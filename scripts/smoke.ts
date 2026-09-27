@@ -8,8 +8,10 @@
  *   npm run smoke
  */
 import { buildAssistant } from '../src/providers/vapi.js'
+import { taskIdFromRoom } from '../src/providers/livekit.js'
+import { buildInstructions, buildTools } from '../src/agent/session.js'
 import * as store from '../src/db.js'
-import { parseWhen } from '../src/tools.js'
+import { parseWhen, toolSpecs } from '../src/tools.js'
 import { nextOpenSlot, withinBusinessHours } from '../src/orchestrator.js'
 import { TaskInput } from '../src/types.js'
 
@@ -126,6 +128,42 @@ async function main() {
   check('parseWhen handles ISO', iso.toISOString() === '2026-10-01T09:30:00.000Z', iso.toISOString())
   const vague = parseWhen('sometime soon-ish', new Date('2026-09-21T15:00:00Z'))
   check('parseWhen falls back rather than throwing', vague > new Date('2026-09-21T15:00:00Z'))
+
+  /* ---- the livekit stack, same agent over a different transport --------- */
+
+  const lkTask = store.createTask({ ...input, title: 'smoke test (livekit)' })
+  const specs = toolSpecs()
+  const vapiNames = (assistant.model.tools as { function: { name: string } }[]).map((t) => t.function.name)
+  const lkTools = buildTools(lkTask, null)
+
+  check('both stacks expose the same six tools', specs.length === 6 && lkTools.length === 6)
+  check(
+    'tool names are identical across stacks',
+    vapiNames.sort().join(',') === lkTools.map((t) => t.name).sort().join(','),
+    { vapiNames, livekit: lkTools.map((t) => t.name) },
+  )
+
+  const lkPrompt = buildInstructions(lkTask)
+  check('livekit prompt carries the universal rails', lkPrompt.includes('NON-NEGOTIABLE'))
+  check('livekit prompt still withholds on_request facts', !lkPrompt.includes('8829301'))
+  check('livekit prompt instructs the opening line rather than scripting it', /OPENING THE CALL/.test(lkPrompt))
+  check('livekit prompt tells the agent not to talk over the IVR', /Say nothing until/.test(lkPrompt))
+
+  // Proves the handlers are shared: no HTTP, same database effect.
+  const lkRecord = lkTools.find((t) => t.name === 'record')!
+  await lkRecord.execute({ key: 'reference_number', value: 'LK-4471' }, {} as never)
+  check(
+    'a livekit tool call hits the same handler',
+    store.getTask(lkTask.id)?.findings.reference_number === 'LK-4471',
+    store.getTask(lkTask.id)?.findings,
+  )
+
+  const lkLookup = lkTools.find((t) => t.name === 'lookup_fact')!
+  const lkSecret = (await lkLookup.execute({ key: 'portal_password' }, {} as never)) as string
+  check('livekit path honours the never-disclose policy', !lkSecret.includes('hunter2'), lkSecret)
+
+  check('room names round-trip to task ids', taskIdFromRoom(`errand-${lkTask.id}`) === lkTask.id)
+  check('unrelated rooms are ignored', taskIdFromRoom('some-other-room') === null)
 
   /* ---- auth ------------------------------------------------------------- */
   const bad = await fetch(`${BASE}/webhooks/vapi/tool/${task.id}?secret=wrong`, {

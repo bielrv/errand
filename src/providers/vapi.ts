@@ -1,14 +1,13 @@
 import { config } from '../config.js'
 import { analysisPlan, buildFirstMessage, buildSystemPrompt } from '../prompt.js'
 import { toolDefinitions } from '../tools.js'
+import type { PlacedCall, VoiceProvider } from './types.js'
 import type { Task } from '../types.js'
 
 /**
- * The only file that knows about Vapi. Swapping to Retell or Bland means
- * writing a sibling with the same two exports.
+ * The managed stack. Vapi owns the media path and calls our webhooks; see
+ * src/providers/livekit.ts for the version where we own the pipeline.
  */
-
-export type PlacedCall = { providerCallId: string }
 
 async function vapi(path: string, init: RequestInit = {}): Promise<unknown> {
   const res = await fetch(`${config.vapi.baseUrl}${path}`, {
@@ -41,16 +40,16 @@ export function buildAssistant(task: Task): Record<string, unknown> {
     silenceTimeoutSeconds: 300,
     backgroundSound: 'office',
     model: {
-      provider: config.vapi.model.provider,
-      model: config.vapi.model.model,
+      provider: config.model.provider,
+      model: config.model.model,
       temperature: 0.3,
       messages: [{ role: 'system', content: buildSystemPrompt(task) }],
       tools: toolDefinitions(task.id),
     },
-    voice: { provider: config.vapi.voice.provider, voiceId: config.vapi.voice.voiceId },
+    voice: { provider: config.voice.provider, voiceId: config.voice.voiceId },
     transcriber: {
-      provider: config.vapi.transcriber.provider,
-      model: config.vapi.transcriber.model,
+      provider: config.transcriber.provider,
+      model: config.transcriber.model,
       language: task.language.split('-')[0],
     },
     server: {
@@ -61,7 +60,7 @@ export function buildAssistant(task: Task): Record<string, unknown> {
   }
 }
 
-export async function placeCall(task: Task): Promise<PlacedCall> {
+async function placeCall(task: Task): Promise<PlacedCall> {
   const body = {
     phoneNumberId: config.vapi.phoneNumberId,
     customer: { number: task.callee.phone, name: task.callee.name },
@@ -71,9 +70,11 @@ export async function placeCall(task: Task): Promise<PlacedCall> {
   return { providerCallId: res.id }
 }
 
-export async function endCall(providerCallId: string): Promise<void> {
+async function endCall(providerCallId: string): Promise<void> {
   await vapi(`/call/${providerCallId}`, {
     method: 'PATCH',
     body: JSON.stringify({ status: 'ended' }),
   })
 }
+
+export const vapiProvider: VoiceProvider = { name: 'vapi', placeCall, endCall }
