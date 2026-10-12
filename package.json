@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/smoke.ts",
     "prompt": "tsx scripts/show-prompt.ts",
-    "worker": "tsx src/agent/worker.ts"
+    "worker": "tsx src/agent/worker.ts",
+    "bench": "tsx scripts/bench.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.127.0",

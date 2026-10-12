@@ -77,6 +77,16 @@ does give you is the measurement - `maxCallDuration` caps each call's cost, and
 per-call model, STT and TTS usage lands in the `calls.metrics` column. Look at
 real numbers from real calls before engineering against them.
 
+### And latency is not the reason to switch
+
+`npm run bench` settles it. A tool call costs ~0.8 ms in-process and ~15 ms over
+a webhook on localhost - but a bare `GET /health` with no handler at all also
+costs ~15 ms on the same machine, so the entire gap is the HTTP hop, not our
+code. In production that hop becomes an internet round trip, 20-80 ms, perhaps
+six times in a call: a few hundred milliseconds of extra dead air spread across
+a call that spends twenty minutes on hold. Pick `livekit` for cost or for
+turn-taking control, not for speed.
+
 ## Design decisions worth knowing
 
 **Facts have a disclosure policy.** Anything marked `on_request` is kept out of
@@ -148,7 +158,8 @@ npm run task -- --file tasks/example-boiler.json   # skip the composer
 npm run task -- --list
 npm run task -- --show <id>
 npm run prompt -- tasks/example-boiler.json        # see the exact prompt
-npm run smoke                                      # 36 checks, no phone call
+npm run smoke                                      # 29 checks, no phone call
+npm run bench                                      # tool-call latency, both transports
 ```
 
 ## Before it will actually work
